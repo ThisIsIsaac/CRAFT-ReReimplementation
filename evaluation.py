@@ -1,8 +1,7 @@
 from test import test_net
 import time
-import file_utils
 import os
-import imgproc
+from util import imgproc, file_utils
 import cv2
 from eval.icdar2015.script import eval_2015
 from eval.icdar2013.script import eval_2013

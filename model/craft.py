@@ -7,11 +7,12 @@ MIT License
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from collections import OrderedDict
-import torch.nn.init as init
-from torchutil import *
+from util.torchutil import *
+from model.vgg16_bn import vgg16_bn
 
-from basenet.vgg16_bn import vgg16_bn
+# imports for post processing
+from util import craft_utils, imgproc
+import numpy as np
 
 
 class double_conv(nn.Module):
@@ -32,14 +33,17 @@ class double_conv(nn.Module):
 
 
 class CRAFT(nn.Module):
-    def __init__(self, pretrained=True, freeze=False):
+    def __init__(self, use_vgg16_pretrained=True, freeze=False):
+        """
+
+        :param vgg_pretrained_path:
+        :param freeze: freeze vgg16_bn weights
+        """
         super(CRAFT, self).__init__()
 
         """ Base network """
-        # self.net = vgg16_bn(pretrained, freeze)
-        # self.net.load_state_dict(copyStateDict(torch.load('vgg16_bn-6c64b313.pth')))
-        # self.basenet = self.net
-        self.basenet = vgg16_bn(pretrained, freeze)
+        self.basenet = vgg16_bn(pretrained=use_vgg16_pretrained,  freeze=freeze)
+
         """ U network """
         self.upconv1 = double_conv(1024, 512, 256)
         self.upconv2 = double_conv(512, 256, 128)
@@ -85,6 +89,52 @@ class CRAFT(nn.Module):
 
         return y.permute(0, 2, 3, 1), feature
 
+    def get_vgg16_state_dict(self):
+        """
+
+        :return:
+        OrderDict of state_dicts, where key is name of layer (ex. "slice1") and value is state_dict
+        of the layer.
+        """
+        state_dicts = OrderedDict()
+        state_dicts["slice1"] = self.basenet.slice1.state_dict()
+        state_dicts["slice2"] = self.basenet.slice2.state_dict()
+        state_dicts["slice3"] = self.basenet.slice3.state_dict()
+        state_dicts["slice4"] = self.basenet.slice4.state_dict()
+        state_dicts["slice5"] = self.basenet.slice5.state_dict()
+        return state_dicts
+
+    def load_vgg16_state_dict(self, state_dicts):
+        """
+        :param state_dicts: OrderDict of state_dicts, where key is name of layer (ex. "slice1") and value is state_dict
+        of the layer.
+        """
+        self.basenet.slice1.load_state_dict(state_dicts["slice1"])
+        self.basenet.slice2.load_state_dict(state_dicts["slice2"])
+        self.basenet.slice3.load_state_dict(state_dicts["slice3"])
+        self.basenet.slice4.load_state_dict(state_dicts["slice4"])
+        self.basenet.slice5.load_state_dict(state_dicts["slice5"])
+
+    #Todo: complete
+    def tensor_to_image(self, net_output, text_threshold, link_threshold, low_text, poly):
+        score_text = net_output[0, :, :, 0].cpu().data.numpy()
+        score_link = net_output[0, :, :, 1].cpu().data.numpy()
+
+        # Post-processing
+        boxes, polys = craft_utils.getDetBoxes(score_text, score_link, text_threshold, link_threshold, low_text, poly)
+
+        # coordinate adjustment
+        boxes = craft_utils.adjustResultCoordinates(boxes, ratio_w, ratio_h)
+        polys = craft_utils.adjustResultCoordinates(polys, ratio_w, ratio_h)
+        for k in range(len(polys)):
+            if polys[k] is None: polys[k] = boxes[k]
+
+        # render results (optional)
+        render_img = score_text.copy()
+        render_img = np.hstack((render_img, score_link))
+        ret_score_text = imgproc.cvt2HeatmapImg(render_img)
+
+        return boxes, polys, ret_score_text
 
 if __name__ == '__main__':
     model = CRAFT(pretrained=True).cuda()

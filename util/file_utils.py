@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 import os
 import numpy as np
+from PIL import Image
 import cv2
-import imgproc
+
 
 # borrowed from https://github.com/lengstrom/fast-style-transfer/blob/master/src/utils.py
 def get_files(img_dir):
@@ -30,7 +31,7 @@ def list_files(in_path):
     # gt_files.sort()
     return img_files, mask_files, gt_files
 
-def saveResult(img_file, img, boxes, dirname='./result/', verticals=None, texts=None):
+def saveResult(img_file, img, boxes, dirname='./result/', verticals=None, texts=None, crop=False):
         """ save text detection result one by one
         Args:
             img_file (str): image file name
@@ -40,10 +41,14 @@ def saveResult(img_file, img, boxes, dirname='./result/', verticals=None, texts=
         Return:
             None
         """
+
         img = np.array(img)
 
         # make result file list
         filename, file_ext = os.path.splitext(os.path.basename(img_file))
+
+        if not dirname.endswith("/"):
+            dirname = dirname + "/"
 
         # result directory
         res_file = dirname + "res_" + filename + '.txt'
@@ -52,31 +57,47 @@ def saveResult(img_file, img, boxes, dirname='./result/', verticals=None, texts=
         if not os.path.isdir(dirname):
             os.mkdir(dirname)
 
+        # create directory to save cropped images
+        if crop:
+            cropped_dirname = dirname + "cropped/"
+            if not os.path.exists(cropped_dirname):
+                os.mkdir(cropped_dirname)
+
+            cropped_dirname = cropped_dirname + filename + "/"
+            if not os.path.exists(cropped_dirname):
+                os.mkdir(cropped_dirname)
+
         with open(res_file, 'w') as f:
             for i, box in enumerate(boxes):
                 poly = np.array(box).astype(np.int32).reshape((-1))
                 strResult = ','.join([str(p) for p in poly]) + '\r\n'
-                # poly = np.array(box).astype(np.int32)
-                # min_x = np.min(poly[:,0])
-                # max_x = np.max(poly[:,0])
-                # min_y = np.min(poly[:,1])
-                # max_y = np.max(poly[:,1])
-                # strResult = ','.join([str(min_x), str(min_y), str(max_x), str(max_y)]) + '\r\n'
                 f.write(strResult)
 
-        #         poly = poly.reshape(-1, 2)
-        #         cv2.polylines(img, [poly.reshape((-1, 1, 2))], True, color=(0, 0, 255), thickness=2)
-        #         ptColor = (0, 255, 255)
-        #         if verticals is not None:
-        #             if verticals[i]:
-        #                 ptColor = (255, 0, 0)
-        #
-        #         if texts is not None:
-        #             font = cv2.FONT_HERSHEY_SIMPLEX
-        #             font_scale = 0.5
-        #             cv2.putText(img, "{}".format(texts[i]), (poly[0][0]+1, poly[0][1]+1), font, font_scale, (0, 0, 0), thickness=1)
-        #             cv2.putText(img, "{}".format(texts[i]), tuple(poly[0]), font, font_scale, (0, 255, 255), thickness=1)
-        #
-        # #Save result image
-        # cv2.imwrite(res_img_file, img)
+                poly = poly.reshape(-1, 2)
+                cv2.polylines(img, [poly.reshape((-1, 1, 2))], True, color=(0, 0, 255), thickness=2)
+                ptColor = (0, 255, 255)
+                if verticals is not None:
+                    if verticals[i]:
+                        ptColor = (255, 0, 0)
+
+                if texts is not None:
+                    font = cv2.FONT_HERSHEY_SIMPLEX
+                    font_scale = 0.5
+                    cv2.putText(img, "{}".format(texts[i]), (poly[0][0] + 1, poly[0][1] + 1), font, font_scale,
+                                (0, 0, 0), thickness=1)
+                    cv2.putText(img, "{}".format(texts[i]), tuple(poly[0]), font, font_scale, (0, 255, 255),
+                                thickness=1)
+
+                if crop:
+                    cropped_img = Image.open(img_file)
+                    cropped_img_path = cropped_dirname + "cropped" + str(i) + "_" + filename + ".jpg"
+                    left = min(poly[0][0], poly[3][0])
+                    up = min(poly[0][1], poly[1][1])
+                    right = max(poly[1][0], poly[2][0])
+                    down = max(poly[2][1], poly[3][1])
+                    cropped_img = cropped_img.crop((left, up, right, down))
+                    cropped_img.save(cropped_img_path)
+
+        # Save result image
+        cv2.imwrite(res_img_file, img)
 

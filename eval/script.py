@@ -102,13 +102,13 @@ def evaluate_method(gtFilePath, submFilePath, evaluationParams):
         return points
 
     def get_union(pD, pG):
-        areaA = pD.area();
-        areaB = pG.area();
-        return areaA + areaB - get_intersection(pD, pG);
+        areaA = pD.area()
+        areaB = pG.area()
+        return areaA + areaB - get_intersection(pD, pG)
 
     def get_intersection_over_union(pD, pG):
         try:
-            return get_intersection(pD, pG) / get_union(pD, pG);
+            return get_intersection(pD, pG) / get_union(pD, pG)
         except:
             return 0
 
@@ -144,6 +144,7 @@ def evaluate_method(gtFilePath, submFilePath, evaluationParams):
 
     Rectangle = namedtuple('Rectangle', 'xmin ymin xmax ymax')
 
+    # load all files in the groundtruth and submission zip file
     gt = rrc_evaluation_funcs.load_zip_file(gtFilePath, evaluationParams['GT_SAMPLE_NAME_2_ID'])
     subm = rrc_evaluation_funcs.load_zip_file(submFilePath, evaluationParams['DET_SAMPLE_NAME_2_ID'], True)
 
@@ -153,6 +154,7 @@ def evaluate_method(gtFilePath, submFilePath, evaluationParams):
     arrGlobalConfidences = [];
     arrGlobalMatches = [];
 
+    # iterate through all files in the ground truth
     for resFile in gt:
 
         gtFile = rrc_evaluation_funcs.decode_utf8(gt[resFile])
@@ -184,12 +186,11 @@ def evaluate_method(gtFilePath, submFilePath, evaluationParams):
 
         evaluationLog = ""
 
-        pointsList, _, transcriptionsList = rrc_evaluation_funcs.get_tl_line_values_from_file_contents(gtFile,
-                                                                                                       evaluationParams[
-                                                                                                           'CRLF'],
-                                                                                                       evaluationParams[
-                                                                                                           'LTRB'],
-                                                                                                       True, False)
+        pointsList, _, transcriptionsList = \
+            rrc_evaluation_funcs.get_tl_line_values_from_file_contents(gtFile,
+                                                                       evaluationParams['CRLF'],
+                                                                       evaluationParams['LTRB'],
+                                                                       True, False)
         for n in range(len(pointsList)):
             points = pointsList[n]
             transcription = transcriptionsList[n]
@@ -207,28 +208,37 @@ def evaluate_method(gtFilePath, submFilePath, evaluationParams):
         evaluationLog += "GT polygons: " + str(len(gtPols)) + (
             " (" + str(len(gtDontCarePolsNum)) + " don't care)\n" if len(gtDontCarePolsNum) > 0 else "\n")
 
+        # if the ground truth file has been evaluated by the network,
+        # calculate precision, recall, and H-mean
         if resFile in subm:
 
             detFile = rrc_evaluation_funcs.decode_utf8(subm[resFile])
 
-            pointsList, confidencesList, _ = rrc_evaluation_funcs.get_tl_line_values_from_file_contents(detFile,
-                                                                                                        evaluationParams[
-                                                                                                            'CRLF'],
-                                                                                                        evaluationParams[
-                                                                                                            'LTRB'],
-                                                                                                        False,
-                                                                                                        evaluationParams[
-                                                                                                            'CONFIDENCES'])
+            # read points and confidence of a single submission file
+            # a single submission file can hold results to multiple images
+            pointsList, confidencesList, _ = \
+                rrc_evaluation_funcs.get_tl_line_values_from_file_contents(detFile,
+                                                                            evaluationParams['CRLF'],
+                                                                            evaluationParams['LTRB'],
+                                                                            False,
+                                                                            evaluationParams['CONFIDENCES'])
+
+            # iterate through all sets of points and
+            # create a Polygon object for each set of points
             for n in range(len(pointsList)):
                 points = pointsList[n]
 
+                # produce a Polygon object from a list of points
                 if evaluationParams['LTRB']:
                     detRect = Rectangle(*points)
                     detPol = rectangle_to_polygon(detRect)
                 else:
                     detPol = polygon_from_points(points)
+
+                # list of Polygon objects
                 detPols.append(detPol)
                 detPolPoints.append(points)
+
                 if len(gtDontCarePolsNum) > 0:
                     for dontCarePol in gtDontCarePolsNum:
                         dontCarePol = gtPols[dontCarePol]
@@ -242,6 +252,7 @@ def evaluate_method(gtFilePath, submFilePath, evaluationParams):
             evaluationLog += "DET polygons: " + str(len(detPols)) + (
                 " (" + str(len(detDontCarePolsNum)) + " don't care)\n" if len(detDontCarePolsNum) > 0 else "\n")
 
+            # calculate
             if len(gtPols) > 0 and len(detPols) > 0:
                 # Calculate IoU and precision matrixs
                 outputShape = [len(gtPols), len(detPols)]
@@ -278,6 +289,8 @@ def evaluate_method(gtFilePath, submFilePath, evaluationParams):
                         arrGlobalConfidences.append(confidencesList[detNum]);
                         arrGlobalMatches.append(match);
 
+        # calculate recall, precision, and H-mean among ground truth and
+        # submission files that we care
         numGtCare = (len(gtPols) - len(gtDontCarePolsNum))
         numDetCare = (len(detPols) - len(detDontCarePolsNum))
         if numGtCare == 0:
@@ -347,6 +360,4 @@ def eval_2015(res_folder):
 
 
 def getresult():
-    # rrc_evaluation_funcs.main_evaluation(None, default_evaluation_params, validate_data, evaluate_method)
-    #eval_2015('../../test')
     eval_2015('/data/CRAFT-pytorch/result')

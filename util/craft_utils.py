@@ -7,9 +7,11 @@ MIT License
 import numpy as np
 import cv2
 import math
+from util import file_utils, imgproc
+import os
 
 """ auxilary functions """
-# unwarp corodinates
+# unwarp coorodinates
 def warpCoord(Minv, pt):
     out = np.matmul(Minv, (pt[0], pt[1], 1))
     return np.array([out[0]/out[2], out[1]/out[2]])
@@ -54,9 +56,6 @@ def getDetBoxes_core(textmap, linkmap, text_threshold, link_threshold, low_text)
         if ey >= img_h: ey = img_h
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT,(1 + niter, 1 + niter))
         segmap[sy:ey, sx:ex] = cv2.dilate(segmap[sy:ey, sx:ex], kernel, iterations=1)
-        #kernel1 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 5))
-        #segmap[sy:ey, sx:ex] = cv2.dilate(segmap[sy:ey, sx:ex], kernel1, iterations=1)
-
 
         # make box
         np_contours = np.roll(np.array(np.where(segmap!=0)),1,axis=0).transpose().reshape(-1,2)
@@ -244,3 +243,76 @@ def adjustResultCoordinates(polys, ratio_w, ratio_h, ratio_net = 2):
             if polys[k] is not None:
                 polys[k] *= (ratio_w * ratio_net, ratio_h * ratio_net)
     return polys
+
+def save_net_outputs(text_heat_map, link_heat_map, image_paths, images=None, output_path="net_results", text_threshold=0.7, link_threshold=0.4, low_text=0.4,
+                     canvas_size=2240, mag_ratio=2.0, poly=False):
+    batch_size = text_heat_map.shape[0]
+    assert batch_size == len(image_paths), "number of image paths doesn't match the bathc size of network output"
+
+    if not os.path.exists(output_path):
+        os.mkdir(output_path)
+
+    for batch in range(batch_size):
+        image_path = image_paths[batch]
+
+        if images is None:
+            image = imgproc.loadImage(image_path)
+        else:
+            image = images[batch].cpu().data.numpy()
+
+        _, target_ratio, _ = imgproc.resize_aspect_ratio(image, canvas_size,
+                                                          interpolation=cv2.INTER_LINEAR,
+                                                          mag_ratio=mag_ratio)
+
+        ratio_h = ratio_w = 1 / target_ratio
+
+        # make score and link map
+        score_text = text_heat_map[batch].cpu().data.numpy()
+        score_link = link_heat_map[batch].cpu().data.numpy()
+
+        # Post-processing
+        boxes, polys = getDetBoxes(score_text, score_link, text_threshold, link_threshold, low_text, poly)
+
+        # coordinate adjustment
+        boxes = adjustResultCoordinates(boxes, ratio_w, ratio_h)
+        polys = adjustResultCoordinates(polys, ratio_w, ratio_h)
+        for k in range(len(polys)):
+            if polys[k] is None: polys[k] = boxes[k]
+
+        # render results (optional)
+        render_img = score_text.copy()
+        render_img = np.hstack((render_img, score_link))
+        score_text = imgproc.cvt2HeatmapImg(render_img)
+
+        file_name, file_ext = os.path.splitext(os.path.basename(image_path))
+        masked_img_path = os.path.join(output_path, "res_" + file_name + "_masked.jpg")
+
+        cv2.imwrite(masked_img_path, score_text)
+
+        file_utils.saveResult(file_name, image[:, :, ::-1], polys, dirname=output_path)
+
+def save_outputs(imagename, image, region_scores, affinity_scores, confidence_mask, text_threshold, link_threshold,
+                                           low_text, out_dir):
+    boxes, polys = getDetBoxes(region_scores, affinity_scores, text_threshold, link_threshold, low_text, False)
+    boxes = np.array(boxes, np.int32) * 2
+    if len(boxes) > 0:
+        np.clip(boxes[:, :, 0], 0, image.shape[1])
+        np.clip(boxes[:, :, 1], 0, image.shape[0])
+        for box in boxes:
+            cv2.polylines(image, [np.reshape(box, (-1, 1, 2))], True, (0, 0, 255))
+    target_gaussian_heatmap_color = imgproc.cvt2HeatmapImg(region_scores / 255)
+    target_gaussian_affinity_heatmap_color = imgproc.cvt2HeatmapImg(affinity_scores / 255)
+    confidence_mask_gray = imgproc.cvt2HeatmapImg(confidence_mask)
+    gt_scores = np.hstack([target_gaussian_heatmap_color, target_gaussian_affinity_heatmap_color])
+    confidence_mask_gray = np.hstack([np.zeros_like(confidence_mask_gray), confidence_mask_gray])
+    output = np.concatenate([gt_scores, confidence_mask_gray],
+                            axis=0)
+    output = np.hstack([image, output])
+
+    imagename, _ = os.path.splitext(os.path.basename(imagename))
+    imagename = imagename + "_after_processing.jpg"
+    outpath = os.path.join(out_dir, imagename)
+
+    if not os.path.exists(os.path.dirname(outpath)):
+        os.mkdir(os.path.dirname(outpath))
+    cv2.imwrite(outpath, output)

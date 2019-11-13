@@ -31,7 +31,7 @@ def load_zip_file_keys(file, fileNameRegExp=''):
     pairs = []
 
     for name in archive.namelist():
-        addFile = True
+        addFile = Truemain_evaluation
         keyName = name
         if fileNameRegExp != "":
             m = re.match(fileNameRegExp, name)

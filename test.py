@@ -4,28 +4,20 @@ MIT License
 """
 
 # -*- coding: utf-8 -*-
-import sys
 import os
 import time
 import argparse
 
 import torch
-import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 
-from PIL import Image
-
 import cv2
-from skimage import io
 import numpy as np
-import craft_utils
-import imgproc
-import file_utils
-import json
-import zipfile
+from util import craft_utils, imgproc, file_utils
+import logging
 
-from craft import CRAFT
+from model.craft import CRAFT
 
 from collections import OrderedDict
 def copyStateDict(state_dict):
@@ -42,29 +34,7 @@ def copyStateDict(state_dict):
 def str2bool(v):
     return v.lower() in ("yes", "y", "true", "t", "1")
 
-parser = argparse.ArgumentParser(description='CRAFT Text Detection')
-parser.add_argument('--trained_model', default='weights/craft_mlt_25k.pth', type=str, help='pretrained model')
-parser.add_argument('--text_threshold', default=0.7, type=float, help='text confidence threshold')
-parser.add_argument('--low_text', default=0.4, type=float, help='text low-bound score')
-parser.add_argument('--link_threshold', default=0.4, type=float, help='link confidence threshold')
-parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
-parser.add_argument('--canvas_size', default=2240, type=int, help='image size for inference')
-parser.add_argument('--mag_ratio', default=2, type=float, help='image magnification ratio')
-parser.add_argument('--poly', default=False, action='store_true', help='enable polygon type')
-parser.add_argument('--show_time', default=False, action='store_true', help='show processing time')
-parser.add_argument('--test_folder', default='/data/', type=str, help='folder path to input images')
-
-args = parser.parse_args()
-
-
-""" For test images in a folder """
-image_list, _, _ = file_utils.get_files('/data/CRAFT-pytorch/test')
-
-result_folder = '/data/CRAFT-pytorch/result/'
-if not os.path.isdir(result_folder):
-    os.mkdir(result_folder)
-
-def test_net(net, image, text_threshold, link_threshold, low_text, cuda, poly):
+def test_net(args, net, image, text_threshold, link_threshold, low_text, cuda, poly):
     t0 = time.time()
 
     # resize
@@ -104,26 +74,20 @@ def test_net(net, image, text_threshold, link_threshold, low_text, cuda, poly):
     render_img = np.hstack((render_img, score_link))
     ret_score_text = imgproc.cvt2HeatmapImg(render_img)
 
-    if args.show_time : print("\ninfer/postproc time : {:.3f}/{:.3f}".format(t0, t1))
+    if args.show_time : logging.info("\ninfer/postproc time : {:.3f}/{:.3f}".format(t0, t1))
 
     return boxes, polys, ret_score_text
 
-
-
-def test(modelpara):
+def test(args, ckpt_path):
     # load net
-    net = CRAFT()     # initialize
+    net = CRAFT(pretrained=False)     # initialize
 
-    print('Loading weights from checkpoint {}'.format(modelpara))
-    if args.cuda:
-        net.load_state_dict(copyStateDict(torch.load(modelpara)))
-    else:
-        net.load_state_dict(copyStateDict(torch.load(modelpara, map_location='cpu')))
+    logging.info('Loading weights from checkpoint {}'.format(ckpt_path))
 
-    if args.cuda:
-        net = net.cuda()
-        net = torch.nn.DataParallel(net)
-        cudnn.benchmark = False
+    net.load_state_dict(copyStateDict(torch.load(ckpt_path)))
+    net = net.cuda()
+    net = torch.nn.DataParallel(net)
+    cudnn.benchmark = False
 
     net.eval()
 
@@ -131,15 +95,38 @@ def test(modelpara):
 
     # load data
     for k, image_path in enumerate(image_list):
-        print("Test image {:d}/{:d}: {:s}".format(k+1, len(image_list), image_path), end='\r')
+        logging.info("Test image {:d}/{:d}: {:s}".format(k+1, len(image_list), image_path), end='\r')
         image = imgproc.loadImage(image_path)
 
-        bboxes, polys, score_text = test_net(net, image, args.text_threshold, args.link_threshold, args.low_text, args.cuda, args.poly)
+        bboxes, polys, score_text = test_net(net, image, args.text_threshold, args.link_threshold, args.low_text, True, args.poly)
+
         # save score text
         filename, file_ext = os.path.splitext(os.path.basename(image_path))
         mask_file = result_folder + "/res_" + filename + '_mask.jpg'
-        #cv2.imwrite(mask_file, score_text)
+        cv2.imwrite(mask_file, score_text)
 
-        file_utils.saveResult(image_path, image[:,:,::-1], polys, dirname=result_folder)
+        file_utils.saveResult(image_path, image[:, :, ::-1], polys, dirname=result_folder)
 
-    print("elapsed time : {}s".format(time.time() - t))
+    logging.info("elapsed time : {}s".format(time.time() - t))
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='CRAFT Text Detection')
+    parser.add_argument('--trained_model', default='weights/craft_mlt_25k.pth', type=str, help='pretrained model')
+    parser.add_argument('--text_threshold', default=0.7, type=float, help='text confidence threshold')
+    parser.add_argument('--low_text', default=0.4, type=float, help='text low-bound score')
+    parser.add_argument('--link_threshold', default=0.4, type=float, help='link confidence threshold')
+    parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
+    parser.add_argument('--canvas_size', default=2240, type=int, help='image size for inference')
+    parser.add_argument('--mag_ratio', default=2, type=float, help='image magnification ratio')
+    parser.add_argument('--poly', default=False, action='store_true', help='enable polygon type')
+    parser.add_argument('--show_time', default=False, action='store_true', help='show processing time')
+    parser.add_argument('--test_folder', default='/data/', type=str, help='folder path to input images')
+
+    args = parser.parse_args()
+
+    """ For test images in a folder """
+    image_list, _, _ = file_utils.get_files('/data/CRAFT-pytorch/test')
+
+    result_folder = '/data/CRAFT-pytorch/result/'
+    if not os.path.isdir(result_folder):
+        os.mkdir(result_folder)

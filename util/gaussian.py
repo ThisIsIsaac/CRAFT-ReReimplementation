@@ -2,7 +2,7 @@ from math import exp
 import numpy as np
 import cv2
 import os
-import imgproc
+from util import imgproc
 
 
 class GaussianTransformer(object):
@@ -114,8 +114,8 @@ class GaussianTransformer(object):
             warped = cv2.warpPerspective(self.standardGaussianHeat.copy(), _M, (width, height))
             warped = np.array(warped, np.uint8)
             if warped.shape[0] != (ymax - ymin) or warped.shape[1] != (xmax - xmin):
-                print("region (%d:%d,%d:%d) warped shape (%d,%d)" % (
-                    ymin, ymax, xmin, xmax, warped.shape[1], warped.shape[0]))
+                #print("region (%d:%d,%d:%d) warped shape (%d,%d)" % (
+                #    ymin, ymax, xmin, xmax, warped.shape[1], warped.shape[0]))
                 return image
             # if affi:
             # print("warped", warped.shape, real_target_box, target_bbox, _target_box)

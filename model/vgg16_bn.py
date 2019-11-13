@@ -1,29 +1,33 @@
 from collections import namedtuple
-
 import torch
+import torch.nn as nn
 from torchvision import models
 from torchvision.models.vgg import model_urls
-from torchutil import *
-import os
-
-weights_folder = os.path.join(os.path.dirname(__file__) + '/../pretrain')
-
+from util.torchutil import *
 
 class vgg16_bn(torch.nn.Module):
-    def __init__(self, pretrained=True, freeze=False):
+    def __init__(self, pretrained, freeze=False):
+
+        """
+
+        :param pretrained: use pretrained model. If True and state_dicts is not provided, will use pretrained model released
+        from Pytorch. If both are specified, state_dicts will overwrite weights from Pytorch.
+
+        :param freeze:
+        """
         super(vgg16_bn, self).__init__()
         model_urls['vgg16_bn'] = model_urls['vgg16_bn'].replace('https://', 'http://')
-        # vgg_pretrained_features = models.vgg16_bn(pretrained=pretrained).features
-        vgg_pretrained_features = models.vgg16_bn(pretrained=False)
-        if pretrained:
-            vgg_pretrained_features.load_state_dict(
-                copyStateDict(torch.load(os.path.join(weights_folder, '/data/CRAFT-pytorch/vgg16_bn-6c64b313.pth'))))
-        vgg_pretrained_features = vgg_pretrained_features.features
+
+
+        # load pretrained model from Pytorch
+        vgg_pretrained_features = models.vgg16_bn(pretrained=pretrained).features
+
         self.slice1 = torch.nn.Sequential()
         self.slice2 = torch.nn.Sequential()
         self.slice3 = torch.nn.Sequential()
         self.slice4 = torch.nn.Sequential()
         self.slice5 = torch.nn.Sequential()
+
         for x in range(12):  # conv2_2
             self.slice1.add_module(str(x), vgg_pretrained_features[x])
         for x in range(12, 19):  # conv3_3
