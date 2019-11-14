@@ -21,9 +21,6 @@ from util.writer import MyWriter
 import math
 from util import craft_utils
 
-#3.2768e-5
-random.seed(42)
-
 def copyStateDict(state_dict):
     if list(state_dict.keys())[0].startswith("module"):
         start_idx = 1
@@ -105,7 +102,7 @@ if __name__ == '__main__':
                         help='Set logging level to one of: CRITICAL, ERROR, WARNING, INFO, DEBUG')
     parser.add_argument('--print_logs', action='store_true', help='Print log to stdout as well as to a file')
     parser.add_argument('--text_threshold', default=0.7, type=float, help='text confidence threshold')
-    parser.add_argument('--low_text', default=0.4, type=float, help='text low-bound score')
+    parser.add_argument('--low_text', default=0.45, type=float, help='text low-bound score')
     parser.add_argument('--link_threshold', default=0.4, type=float, help='link confidence threshold')
     parser.add_argument('--poly', default=False, action='store_true', help='enable polygon type')
     parser.add_argument('--freeze_vgg16', default=False, action='store_true', help='freeze weights for vgg16')
@@ -115,7 +112,7 @@ if __name__ == '__main__':
     parser.add_argument("--log_interval", type=int, default= 10, help="step interval to log loss during training")
     parser.add_argument("--val_epoch_interval", type=int, default= 1, help="epoch interval to validate")
     parser.add_argument("--save_interval", type=int, default=300, help="step interval to save during training")
-
+    parser.add_argument("--seed", type=int, default=13, help="random seed for Numpy and Pytorch")
     args = parser.parse_args()
 
     # build path to save checkpoints
@@ -143,6 +140,9 @@ if __name__ == '__main__':
         root_logger.addHandler(handler)
 
     writer = MyWriter(results_dir)
+    images_path = os.path.join(results_dir, "images")
+    if not os.path.exists(images_path):
+        os.mkdir(images_path)
     ########################################
 
 
@@ -218,14 +218,21 @@ if __name__ == '__main__':
         sampler=val_sampler)
     ########################################
 
+
+    # set seeds for reproducibility
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+
     criterion = Maploss()
 
     for epoch in tqdm(range(init_epoch, args.epoch)):
 
-        if epoch % args.val_epoch_interval == 0 and epoch != 0:
-            validate(net, val_loader, writer, step)
+        # restore this after debugging validate
+        #if epoch % args.val_epoch_interval == 0 and epoch != 0:
+        if epoch % args.val_epoch_interval == 0:
+            validate(args, net, val_loader, writer, step, images_path)
 
-        for images, gh_label, gah_label, mask, _, img_paths in train_loader:
+        for images, gh_label, gah_label, mask, _, unnormalized_images, img_paths in train_loader:
             step += 1
 
             # source: https://github.com/clovaai/CRAFT-pytorch/issues/18#issuecomment-513258344
@@ -250,16 +257,36 @@ if __name__ == '__main__':
             loss.backward()
             optimizer.step()
 
-            craft_utils.save_outputs(images.cpu(), out1.cpu().data.numpy(), out2.cpu().data.numpy(), 0.7, 0.4, 0.45, "saved_outputs/" + img_paths[0])
-
             if loss > 1e8 or math.isnan(loss):
                 imgs_paths_str = ""
                 for img_path in img_paths:
                     imgs_paths_str += img_path + "\n"
 
-                logging.error("loss %.01f at step %d!" % (loss, step))
-                logging.error("above error occured while processing images:\n" + imgs_paths_str)
+                # create path and directories to save imags
+                error_images_path = os.path.join(images_path, "train_error")
+                if not os.path.exists(error_images_path):
+                    os.mkdir(error_images_path)
+
+                output_images_path = os.path.join(error_images_path, "network_" + str(step))
+                if not os.path.exists(output_images_path):
+                    os.mkdir(output_images_path)
+
+                ref_images_path = os.path.join(error_images_path, "ref_" + str(step))
+                if not os.path.exists(ref_images_path):
+                    os.mkdir(ref_images_path)
+
+                output_images = craft_utils.save_outputs_from_tensors(unnormalized_images, out1, out2,
+                                                                      args.text_threshold, args.link_threshold, args.low_text,
+                                                                      output_images_path, img_paths)
+                ref_images = craft_utils.save_outputs_from_tensors(unnormalized_images, gh_label, gah_label,
+                                                                   args.text_threshold, args.link_threshold, args.low_text,
+                                                                   ref_images_path, img_paths)
+
+                writer.log_output_images(output_images, ref_images, step)
                 writer.log_training(loss, step)
+
+                logging.error("loss %.01f at training step %d!" % (loss, step))
+                logging.error("above error occured while processing images:\n" + imgs_paths_str)
                 raise Exception("Loss exploded")
 
             if step % args.log_interval == 0 and step != 0:

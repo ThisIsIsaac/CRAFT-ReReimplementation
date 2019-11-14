@@ -9,6 +9,7 @@ import cv2
 import math
 from util import file_utils, imgproc
 import os
+import torch
 
 """ auxilary functions """
 # unwarp coorodinates
@@ -297,6 +298,27 @@ def save_net_outputs(text_heat_map, link_heat_map, image_paths, images=None, out
 
 def save_outputs(image, region_scores, affinity_scores, text_threshold, link_threshold,
                                            low_text, outoput_path, confidence_mask = None):
+    """save image, region_scores, and affinity_scores in a single image. region_scores and affinity_scores must be
+    cpu numpy arrays. You can convert GPU Tensors to CPU numpy arrays like this:
+
+    >>> array = tensor.cpu().data.numpy()
+
+    When saving outputs of the network during training, make sure you convert ALL tensors (image, region_score,
+    affinity_score) to numpy array first.
+
+    :param image: numpy array
+    :param region_scores: [] 2D numpy array with each element between 0~1.
+    :param affinity_scores: same as region_scores
+    :param text_threshold: 0 ~ 1. Closer to 0, characters with lower confidence will also be considered a word and be boxed
+    :param link_threshold: 0 ~ 1. Closer to 0, links with lower confidence will also be considered a word and be boxed
+    :param low_text: 0 ~ 1. Closer to 0, boxes will be more loosely drawn.
+    :param outoput_path:
+    :param confidence_mask:
+    :return:
+    """
+
+    assert region_scores.shape == affinity_scores.shape
+    assert len(image.shape) - 1 == len(region_scores.shape)
 
     boxes, polys = getDetBoxes(region_scores, affinity_scores, text_threshold, link_threshold,
                                            low_text, False)
@@ -319,6 +341,52 @@ def save_outputs(image, region_scores, affinity_scores, text_threshold, link_thr
 
     else:
         gt_scores = np.concatenate([target_gaussian_heatmap_color, target_gaussian_affinity_heatmap_color], axis=0)
-        output = np.hstack([image,gt_scores])
+        output = np.hstack([image, gt_scores])
 
     cv2.imwrite(outoput_path, output)
+    return output
+
+def save_outputs_from_tensors(images, region_scores, affinity_scores, text_threshold, link_threshold,
+                                           low_text, output_dir, image_names, confidence_mask = None):
+
+    """takes images, region_scores, and affinity_scores as tensors (cab be GPU).
+
+    :param images: 4D tensor
+    :param region_scores: 3D tensor with values between 0 ~ 1
+    :param affinity_scores: 3D tensor with values between 0 ~ 1
+    :param text_threshold:
+    :param link_threshold:
+    :param low_text:
+    :param output_dir: direcotry to save the output images. Will be joined with base names of image_names
+    :param image_names: names of each image. Doesn't have to be the base name (image file names)
+    :param confidence_mask:
+    :return:
+    """
+
+    #images = images.cpu().permute(0, 2, 3, 1).contiguous().data.numpy()
+    if type(images) == torch.Tensor:
+        images = np.array(images)
+
+    region_scores = region_scores.cpu().data.numpy()
+    affinity_scores = affinity_scores.cpu().data.numpy()
+
+    batch_size = images.shape[0]
+    assert batch_size == region_scores.shape[0] and batch_size == affinity_scores.shape[0] and batch_size == len(image_names), \
+        "The first dimension (i.e. batch size) of images, region scores, and affinity scores must be equal"
+
+    output_images = []
+
+    for i in range(batch_size):
+        image = images[i]
+        region_score = region_scores[i]
+        affinity_score = affinity_scores[i]
+
+        image_name = os.path.basename(image_names[i])
+        outoput_path = os.path.join(output_dir,image_name)
+
+        output_image = save_outputs(image, region_score, affinity_score, text_threshold, link_threshold,
+                                           low_text, outoput_path, confidence_mask=confidence_mask)
+
+        output_images.append(output_image)
+
+    return output_images

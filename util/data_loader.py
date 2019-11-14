@@ -422,16 +422,17 @@ class craft_base_dataset(data.Dataset):
         image = Image.fromarray(image)
         image = image.convert('RGB') # convert to RGB (why is this necessary? Isn't it already RGB?)
         image = transforms.ColorJitter(brightness=32.0 / 255, saturation=0.5)(image)
+        np_array_image = np.array(image)
 
         # convert preprocessed image to tensor
-        image_tensor = imgproc.normalizeMeanVariance(np.array(image), mean=(0.485, 0.456, 0.406),
+        image_tensor = imgproc.normalizeMeanVariance(np_array_image, mean=(0.485, 0.456, 0.406),
                                               variance=(0.229, 0.224, 0.225))
         image_tensor = torch.from_numpy(image_tensor).float().permute(2, 0, 1)
 
         region_scores_torch = torch.from_numpy(region_scores).float()
         affinity_scores_torch = torch.from_numpy(affinity_scores).float()
         confidence_mask_torch = torch.from_numpy(confidence_mask).float()
-        return image_tensor, region_scores_torch, affinity_scores_torch, confidence_mask_torch, confidences, image_path
+        return image_tensor, region_scores_torch, affinity_scores_torch, confidence_mask_torch, confidences, np_array_image, image_path
 
 
 class Synth80k(craft_base_dataset):
@@ -687,7 +688,7 @@ if __name__ == '__main__':
         pin_memory=True)
     total = 0
 
-    for index, (opimage, region_scores, affinity_scores, confidence_mask, confidences_mean, img_paths) in enumerate(train_loader):
+    for index, (image_tensor, region_scores, affinity_scores, confidence_mask, confidences_mean, unnormalized_images, img_paths) in enumerate(train_loader):
         total += 1
 
 

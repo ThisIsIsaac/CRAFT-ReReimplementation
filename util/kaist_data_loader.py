@@ -193,5 +193,5 @@ if __name__ == '__main__':
         drop_last=True,
         pin_memory=True)
     total = 0
-    for index, (opimage, region_scores, affinity_scores, confidence_mask, confidences_mean, img_paths) in enumerate(train_loader):
+    for index, (opimage, region_scores, affinity_scores, confidence_mask, confidences_mean, unnormalized_images, img_paths) in enumerate(train_loader):
         total += 1

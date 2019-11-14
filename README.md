@@ -1,4 +1,7 @@
-# CRAFT-Reimplementation
+# CRAFT-ReReimplementation
+
+This is a ReReimplementation of [Craft-Reimplementation](https://github.com/backtime92/CRAFT-Reimplementation),
+
 ## Reimplementation：Character Region Awareness for Text Detection Reimplementation based on Pytorch
 
 ## Character Region Awareness for Text Detection
