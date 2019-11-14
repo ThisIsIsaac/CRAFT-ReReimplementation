@@ -306,13 +306,19 @@ def save_outputs(image, region_scores, affinity_scores, text_threshold, link_thr
         np.clip(boxes[:, :, 1], 0, image.shape[0])
         for box in boxes:
             cv2.polylines(image, [np.reshape(box, (-1, 1, 2))], True, (0, 0, 255))
-    target_gaussian_heatmap_color = imgproc.cvt2HeatmapImg(region_scores / 255)
-    target_gaussian_affinity_heatmap_color = imgproc.cvt2HeatmapImg(affinity_scores / 255)
-    confidence_mask_gray = imgproc.cvt2HeatmapImg(confidence_mask)
-    gt_scores = np.hstack([target_gaussian_heatmap_color, target_gaussian_affinity_heatmap_color])
-    confidence_mask_gray = np.hstack([np.zeros_like(confidence_mask_gray), confidence_mask_gray])
-    output = np.concatenate([gt_scores, confidence_mask_gray],
-                            axis=0)
-    output = np.hstack([image, output])
+
+    target_gaussian_heatmap_color = imgproc.cvt2HeatmapImg(region_scores)
+    target_gaussian_affinity_heatmap_color = imgproc.cvt2HeatmapImg(affinity_scores)
+
+    if confidence_mask is not None:
+        confidence_mask_gray = imgproc.cvt2HeatmapImg(confidence_mask)
+        gt_scores = np.hstack([target_gaussian_heatmap_color, target_gaussian_affinity_heatmap_color])
+        confidence_mask_gray = np.hstack([np.zeros_like(confidence_mask_gray), confidence_mask_gray])
+        output = np.concatenate([gt_scores, confidence_mask_gray], axis=0)
+        output = np.hstack([image, output])
+
+    else:
+        gt_scores = np.concatenate([target_gaussian_heatmap_color, target_gaussian_affinity_heatmap_color], axis=0)
+        output = np.hstack([image,gt_scores])
 
     cv2.imwrite(outoput_path, output)

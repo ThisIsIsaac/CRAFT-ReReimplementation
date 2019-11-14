@@ -339,7 +339,7 @@ class craft_base_dataset(data.Dataset):
         outpath = os.path.join(out_dir, imagename)
 
         craft_utils.save_outputs(image, region_scores, affinity_scores, self.text_threshold,
-                                 self.link_threshold, self.low_text, outpath, confidence_mask=confidence_mask)
+                                 self.link_threshold, self.low_text, outpath)
 
     def saveImage(self, imagename, image, bboxes, affinity_bboxes, region_scores, affinity_scores, confidence_mask, out_dir):
         output_image = np.uint8(image.copy())

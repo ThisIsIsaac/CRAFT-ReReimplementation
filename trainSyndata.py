@@ -233,8 +233,6 @@ if __name__ == '__main__':
             if step % 20000 == 0 and step != 0:
                 adjust_learning_rate(optimizer, args.gamma, step)
 
-
-
             images = images.cuda()
             gh_label = gh_label.cuda()
             gah_label = gah_label.cuda()
@@ -251,6 +249,8 @@ if __name__ == '__main__':
 
             loss.backward()
             optimizer.step()
+
+            craft_utils.save_outputs(images.cpu(), out1.cpu().data.numpy(), out2.cpu().data.numpy(), 0.7, 0.4, 0.45, "saved_outputs/" + img_paths[0])
 
             if loss > 1e8 or math.isnan(loss):
                 imgs_paths_str = ""
