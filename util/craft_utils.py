@@ -39,7 +39,9 @@ def getDetBoxes_core(textmap, linkmap, text_threshold, link_threshold, low_text)
         if size < 10: continue
 
         # thresholding
-        if np.max(textmap[labels==k]) < text_threshold: continue
+        mask = labels==k
+        mask = textmap[mask]
+        if np.max(mask) < text_threshold: continue
 
         # make segmentation map
         segmap = np.zeros(textmap.shape, dtype=np.uint8)
@@ -244,6 +246,7 @@ def adjustResultCoordinates(polys, ratio_w, ratio_h, ratio_net = 2):
                 polys[k] *= (ratio_w * ratio_net, ratio_h * ratio_net)
     return polys
 
+"""
 def save_net_outputs(text_heat_map, link_heat_map, image_paths, images=None, output_path="net_results", text_threshold=0.7, link_threshold=0.4, low_text=0.4,
                      canvas_size=2240, mag_ratio=2.0, poly=False):
     batch_size = text_heat_map.shape[0]
@@ -290,10 +293,13 @@ def save_net_outputs(text_heat_map, link_heat_map, image_paths, images=None, out
         cv2.imwrite(masked_img_path, score_text)
 
         file_utils.saveResult(file_name, image[:, :, ::-1], polys, dirname=output_path)
+"""
 
-def save_outputs(imagename, image, region_scores, affinity_scores, confidence_mask, text_threshold, link_threshold,
-                                           low_text, out_dir):
-    boxes, polys = getDetBoxes(region_scores, affinity_scores, text_threshold, link_threshold, low_text, False)
+def save_outputs(image, region_scores, affinity_scores, text_threshold, link_threshold,
+                                           low_text, outoput_path, confidence_mask = None):
+
+    boxes, polys = getDetBoxes(region_scores, affinity_scores, text_threshold, link_threshold,
+                                           low_text, False)
     boxes = np.array(boxes, np.int32) * 2
     if len(boxes) > 0:
         np.clip(boxes[:, :, 0], 0, image.shape[1])
@@ -309,10 +315,4 @@ def save_outputs(imagename, image, region_scores, affinity_scores, confidence_ma
                             axis=0)
     output = np.hstack([image, output])
 
-    imagename, _ = os.path.splitext(os.path.basename(imagename))
-    imagename = imagename + "_after_processing.jpg"
-    outpath = os.path.join(out_dir, imagename)
-
-    if not os.path.exists(os.path.dirname(outpath)):
-        os.mkdir(os.path.dirname(outpath))
-    cv2.imwrite(outpath, output)
+    cv2.imwrite(outoput_path, output)

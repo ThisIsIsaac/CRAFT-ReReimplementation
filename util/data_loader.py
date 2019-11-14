@@ -188,7 +188,7 @@ class craft_base_dataset(data.Dataset):
 
         self.text_threshold=0.7
         self.link_threshold=0.4
-        self.low_text=0.6
+        self.low_text=0.45
 
     def __getitem__(self, index):
         return self.pull_item(index)
@@ -332,30 +332,14 @@ class craft_base_dataset(data.Dataset):
     def get_imagename(self, index):
         return None
 
-    def saveInput(self, imagename, image, region_scores, affinity_scores, confidence_mask, out_dir):
-        boxes, polys = craft_utils.getDetBoxes(region_scores, affinity_scores, self.text_threshold, self.link_threshold, self.low_text, False)
-        boxes = np.array(boxes, np.int32) * 2
-        if len(boxes) > 0:
-            np.clip(boxes[:, :, 0], 0, image.shape[1])
-            np.clip(boxes[:, :, 1], 0, image.shape[0])
-            for box in boxes:
-                cv2.polylines(image, [np.reshape(box, (-1, 1, 2))], True, (0, 0, 255))
-        target_gaussian_heatmap_color = imgproc.cvt2HeatmapImg(region_scores / 255)
-        target_gaussian_affinity_heatmap_color = imgproc.cvt2HeatmapImg(affinity_scores / 255)
-        confidence_mask_gray = imgproc.cvt2HeatmapImg(confidence_mask)
-        gt_scores = np.hstack([target_gaussian_heatmap_color, target_gaussian_affinity_heatmap_color])
-        confidence_mask_gray = np.hstack([np.zeros_like(confidence_mask_gray), confidence_mask_gray])
-        output = np.concatenate([gt_scores, confidence_mask_gray],
-                                axis=0)
-        output = np.hstack([image, output])
+    def saveInput(self, image_name, image, region_scores, affinity_scores, confidence_mask, out_dir):
 
-        imagename, _ = os.path.splitext(os.path.basename(imagename))
+        imagename, _ = os.path.splitext(os.path.basename(image_name))
         imagename = imagename + "_after_processing.jpg"
         outpath = os.path.join(out_dir, imagename)
 
-        if not os.path.exists(os.path.dirname(outpath)):
-            os.mkdir(os.path.dirname(outpath))
-        cv2.imwrite(outpath, output)
+        craft_utils.save_outputs(image, region_scores, affinity_scores, self.text_threshold,
+                                 self.link_threshold, self.low_text, outpath, confidence_mask=confidence_mask)
 
     def saveImage(self, imagename, image, bboxes, affinity_bboxes, region_scores, affinity_scores, confidence_mask, out_dir):
         output_image = np.uint8(image.copy())

@@ -233,7 +233,7 @@ if __name__ == '__main__':
             if step % 20000 == 0 and step != 0:
                 adjust_learning_rate(optimizer, args.gamma, step)
 
-            craft_utils.save_net_outputs(gh_label, gah_label, img_paths, output_path="inputs_preprocessed", images=images)
+
 
             images = images.cuda()
             gh_label = gh_label.cuda()
@@ -246,9 +246,6 @@ if __name__ == '__main__':
 
             out1 = out[:, :, :, 0].cuda()
             out2 = out[:, :, :, 1].cuda()
-
-            craft_utils.save_net_outputs(out1, out2, img_paths, output_path="net_results")
-            craft_utils.save_net_outputs(gh_label, gah_label, img_paths, output_path="ref_results")
 
             loss = criterion(gh_label, gah_label, out1, out2, mask)
 

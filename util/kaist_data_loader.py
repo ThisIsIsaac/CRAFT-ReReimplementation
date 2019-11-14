@@ -182,8 +182,6 @@ class KAIST(craft_base_dataset):
         return img, char_bboxes, words, confidence_mask, confidence, img_path
 
 if __name__ == '__main__':
-    from model.craft import CRAFT
-    from util.torchutil import copyStateDict
     import torch
 
     dataloader = KAIST('/DATA1/isaac/ocr_data/KAIST', viz=True, data_corruption=False)
