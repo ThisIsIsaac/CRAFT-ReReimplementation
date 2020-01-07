@@ -1,23 +1,19 @@
 import torch
-import argparse
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
-import random
 import os
-from util.data_loader import Synth80k
-from datetime import datetime
+from data_loader.Synth80k import Synth80k
+from data_loader.KAIST import KAIST
+from data_loader.ICDAR import ICDAR2015, ICDAR2013
 import logging
 from util.mseloss import Maploss
 from collections import OrderedDict
 from model.craft import CRAFT
-from torch.autograd import Variable
-from util.kaist_data_loader import KAIST
-import sys
+from data_loader.kaist_data_loader import KAIST
 from tqdm import tqdm
 from torch.utils.data.sampler import SubsetRandomSampler
 from util.validate import validate
 import numpy as np
-from util.writer import MyWriter
 import math
 from util import craft_utils
 
@@ -32,120 +28,18 @@ def copyStateDict(state_dict):
         new_state_dict[name] = v
     return new_state_dict
 
-def adjust_learning_rate(optimizer, gamma, step):
+def adjust_learning_rate(optimizer, lr, step):
     """Sets the learning rate to the initial LR decayed by 10 at every
         specified step
     # Adapted from PyTorch Imagenet example:
     # https://github.com/pytorch/examples/blob/master/imagenet/main.py
     """
-    lr = args.lr * (0.8 ** step)
-    print(lr)
+    lr = lr * (0.8 ** step)
+
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
-def make_duplicate_id(path):
-    if os.path.exists(path):
-        path = path + "_copy"
-        numeric_index = len(path)
-
-        if os.path.exists(path) == False:
-            return path
-
-        i = 1
-        while os.path.exists(path):
-            path = path[:numeric_index] + str(i)
-            i+=1
-
-    return path
-
-def make_results_dir_path(path):
-    # set the directory that logs, models, and statistics will be saved
-    if path is None or path == "":
-        results_dir = os.path.join('results', datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
-    if path is not None and path != "":
-        results_dir = os.path.join('results', path)
-        if os.path.exists(results_dir):
-            results_dir = make_duplicate_id(results_dir)
-    return results_dir
-
-if __name__ == '__main__':
-    """
-    Supervised learning
-    """
-
-    parser = argparse.ArgumentParser(description='CRAFT reimplementation')
-    parser.add_argument('--batch_size', default=8, type=int,
-                        help='batch size of training')
-    parser.add_argument('--lr', '--learning-rate', default=3.2768e-5, type=float,
-                        help='initial learning rate')
-    parser.add_argument('--momentum', default=0.9, type=float,
-                        help='Momentum value for optim')
-    parser.add_argument('--weight_decay', default=5e-4, type=float,
-                        help='Weight decay for SGD')
-    parser.add_argument('--gamma', default=0.1, type=float,
-                        help='Gamma update for SGD')
-    parser.add_argument('--num_workers', default=32, type=int,
-                        help='Number of workers used in dataloading')
-    parser.add_argument('--dataset_path', default='/data/CRAFT-pytorch/syntext/SynthText/SynthText', type=str,
-                        help='Path to root directory of SynthText dataset')
-    parser.add_argument('--results_dir', default=None, type=str,
-                        help='Path to save checkpoints')
-    parser.add_argument("--ckpt_path", default='/DATA1/isaac/CRAFT-Reimplemetation/pretrain/official_pretrained/craft_mlt_25k.pth', type=str,
-                        help="path to pretrained model")
-    parser.add_argument('--use_vgg16_pretrained', default=False, action='store_true',
-                        help="use Pytorch's pretrained model for vgg16_bn")
-    parser.add_argument("--kaist", action="store_true",
-                        help="use KAIST dataset")
-    parser.add_argument("--synthtext", action="store_true",
-                        help="use SynthText dataset")
-    parser.add_argument('--log_level', type=str, default="INFO",
-                        help='Set logging level to one of: CRITICAL, ERROR, WARNING, INFO, DEBUG')
-    parser.add_argument('--print_logs', action='store_true', help='Print log to stdout as well as to a file')
-    parser.add_argument('--text_threshold', default=0.7, type=float, help='text confidence threshold')
-    parser.add_argument('--low_text', default=0.45, type=float, help='text low-bound score')
-    parser.add_argument('--link_threshold', default=0.4, type=float, help='link confidence threshold')
-    parser.add_argument('--poly', default=False, action='store_true', help='enable polygon type')
-    parser.add_argument('--freeze_vgg16', default=False, action='store_true', help='freeze weights for vgg16')
-    parser.add_argument("--epoch", default=1000, type=int,
-                        help="number of training epochs, starting from the epoch saved in checkpoint")
-    parser.add_argument("--valid_path", type=str, help="path to validation set")
-    parser.add_argument("--log_interval", type=int, default= 10, help="step interval to log loss during training")
-    parser.add_argument("--val_epoch_interval", type=int, default= 1, help="epoch interval to validate")
-    parser.add_argument("--save_interval", type=int, default=300, help="step interval to save during training")
-    parser.add_argument("--seed", type=int, default=13, help="random seed for Numpy and Pytorch")
-    args = parser.parse_args()
-
-    # build path to save checkpoints
-    results_dir = make_results_dir_path(args.results_dir)
-    if not os.path.exists("results"):
-        os.mkdir("results")
-    if not os.path.exists(results_dir):
-        os.mkdir(results_dir)
-
-    ########## config logging ##########
-    numeric_log_level = getattr(logging, args.log_level.upper(), None)
-    if not isinstance(numeric_log_level, int):
-        raise ValueError('Invalid log level: %s' % args.log_level)
-    logging.basicConfig(
-        level=numeric_log_level,
-        filename=os.path.join(results_dir, "logs.log"),
-        filemode='w',
-        format='%(levelname)s - File \"%(filename)s\", Function \"%(funcName)s\", line %(lineno)d (%(asctime)s):\n'
-               '  %(message)s',
-        datefmt='%Y/%m/%d %I:%M:%S %p')
-
-    if (args.print_logs): # add handler to logger to print the output
-        root_logger = logging.getLogger()
-        handler = logging.StreamHandler(sys.stdout)
-        root_logger.addHandler(handler)
-
-    writer = MyWriter(results_dir)
-    images_path = os.path.join(results_dir, "images")
-    if not os.path.exists(images_path):
-        os.mkdir(images_path)
-    ########################################
-
-
+def train(args, writer, results_dir, images_path):
 
     ########## initialize network ##########
     if args.ckpt_path != None:
@@ -216,12 +110,21 @@ if __name__ == '__main__':
         drop_last=True,
         pin_memory=True,
         sampler=val_sampler)
+
+    if args.is_weakly_supervised:
+        assert args.aux_dataset_path != "", "Auxilary dataset path is required for weakly supervised training"
+
+        aux_train_loader = torch.utils.data.DataLoader(
+            Synth80k(args.dataset_path, target_size=768),
+            batch_size=args.batch_size,
+            num_workers=0,
+            drop_last=True,
+            pin_memory=True,
+            sampler=val_sampler)
+
+        aux_train_loader_iter = iter(aux_train_loader)
+
     ########################################
-
-
-    # set seeds for reproducibility
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
 
     criterion = Maploss()
 
@@ -238,7 +141,20 @@ if __name__ == '__main__':
             # source: https://github.com/clovaai/CRAFT-pytorch/issues/18#issuecomment-513258344
             # initial lr is 1e-4 multiplied by 0.8 for every 10k iterations
             if step % 20000 == 0 and step != 0:
-                adjust_learning_rate(optimizer, args.gamma, step)
+                adjust_learning_rate(optimizer, args.lr, step)
+
+            if args.is_weakly_supervised:
+                aux_images, aux_gh_label, aux_gah_label, aux_mask, _, aux_unnormalized_images, aux_img_paths = aux_train_loader_iter
+
+                images = torch.cat((images, aux_images), 0)
+                gh_label = torch.cat((gh_label, aux_gh_label), 0)
+                gah_label = torch.cat((gah_label, aux_gah_label), 0)
+                mask = torch.cat((mask, aux_mask), 0)
+                unnormalized_images = torch.cat((unnormalized_images, aux_unnormalized_images), 0)
+
+                for paths in aux_img_paths:
+                    img_paths.append(paths)
+
 
             images = images.cuda()
             gh_label = gh_label.cuda()
@@ -257,10 +173,15 @@ if __name__ == '__main__':
             loss.backward()
             optimizer.step()
 
+            # if log explodes, save images and log approriate data
             if loss > 1e8 or math.isnan(loss):
                 imgs_paths_str = ""
                 for img_path in img_paths:
                     imgs_paths_str += img_path + "\n"
+
+                # log error message
+                logging.error("loss %.01f at training step %d!" % (loss, step))
+                logging.error("above error occured while processing images:\n" + imgs_paths_str)
 
                 # create path and directories to save imags
                 error_images_path = os.path.join(images_path, "train_error")
@@ -275,6 +196,7 @@ if __name__ == '__main__':
                 if not os.path.exists(ref_images_path):
                     os.mkdir(ref_images_path)
 
+                # save images to disk
                 output_images = craft_utils.save_outputs_from_tensors(unnormalized_images, out1, out2,
                                                                       args.text_threshold, args.link_threshold, args.low_text,
                                                                       output_images_path, img_paths)
@@ -282,11 +204,9 @@ if __name__ == '__main__':
                                                                    args.text_threshold, args.link_threshold, args.low_text,
                                                                    ref_images_path, img_paths)
 
+                # log loss and images
                 writer.log_output_images(output_images, ref_images, step)
                 writer.log_training(loss, step)
-
-                logging.error("loss %.01f at training step %d!" % (loss, step))
-                logging.error("above error occured while processing images:\n" + imgs_paths_str)
                 raise Exception("Loss exploded")
 
             if step % args.log_interval == 0 and step != 0:

@@ -1,13 +1,10 @@
 import torch
 import argparse
-import time
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
 import random
 
-from util.data_loader import Synth80k, ICDAR2013
-
-from test import test
+from data_loader.data_loader import Synth80k, ICDAR2013
 
 ###import file#######
 from util.mseloss import Maploss
@@ -15,7 +12,6 @@ from util.mseloss import Maploss
 
 
 from collections import OrderedDict
-from eval13.script import getresult
 
 from model.craft import CRAFT
 from torch.autograd import Variable
@@ -84,15 +80,6 @@ def adjust_learning_rate(optimizer, gamma, step):
 
 
 if __name__ == '__main__':
-
-    # gaussian = gaussion_transform()
-    # box = scio.loadmat('/data/CRAFT-pytorch/SynthText/gt.mat')
-    # bbox = box['wordBB'][0][0][0]
-    # charbox = box['charBB'][0]
-    # imgname = box['imnames'][0]
-    # imgtxt = box['txt'][0]
-    #
-    # dataloader = syndata(imgname, charbox, imgtxt)
     dataloader = Synth80k('/data/CRAFT-pytorch/SynthText', target_size = 768)
     train_loader = torch.utils.data.DataLoader(
         dataloader,
@@ -102,25 +89,21 @@ if __name__ == '__main__':
         drop_last=True,
         pin_memory=True)
     batch_syn = iter(train_loader)
-    # prefetcher = data_prefetcher(dataloader)
-    # input, target1, target2 = prefetcher.next()
-    #print(input.size())
+
     net = CRAFT()
-    #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/CRAFT_net_050000.pth')))
+
     net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
-    #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/craft_mlt_25k.pth')))
-    #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/synweights/syn_0_20000.pth')))
-    #realdata = realdata(net)
 
     net = net.cuda()
-    #net = CRAFT_net
 
     # if args.cdua:
     net = torch.nn.DataParallel(net,device_ids=[0,1,2,3]).cuda()
     net.train()
 
     cudnn.benchmark = False
+
     realdata = ICDAR2013(net, '/data/CRAFT-pytorch/icdar1317', target_size = 768, viz = False)
+
     real_data_loader = torch.utils.data.DataLoader(
         realdata,
         batch_size=10,
@@ -129,39 +112,28 @@ if __name__ == '__main__':
         drop_last=True,
         pin_memory=True)
 
-
-    #net.train()
     optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     criterion = Maploss()
-    #criterion = torch.nn.MSELoss(reduce=True, size_average=True)
-    #net.train()
-
 
     step_index = 0
-
 
     loss_time = 0
     loss_value = 0
     compare_loss = 1
     for epoch in range(1000):
-        train_time_st = time.time()
         loss_value = 0
         if epoch % 27 == 0 and epoch != 0:
             step_index += 1
             adjust_learning_rate(optimizer, args.gamma, step_index)
 
-        st = time.time()
         for index, (real_images, real_gh_label, real_gah_label, real_mask, _) in enumerate(real_data_loader):
-            #net.train()
-            #real_images, real_gh_label, real_gah_label, real_mask = next(batch_real)
+
             syn_images, syn_gh_label, syn_gah_label, syn_mask, __ = next(batch_syn)
-            #net.train()
+
             images = torch.cat((syn_images,real_images), 0)
             gh_label = torch.cat((syn_gh_label, real_gh_label), 0)
             gah_label = torch.cat((syn_gah_label, real_gah_label), 0)
             mask = torch.cat((syn_mask, real_mask), 0)
-            #affinity_mask = torch.cat((syn_mask, real_affinity_mask), 0)
-
 
             images = Variable(images.type(torch.FloatTensor)).cuda()
             gh_label = gh_label.type(torch.FloatTensor)
@@ -170,8 +142,6 @@ if __name__ == '__main__':
             gah_label = Variable(gah_label).cuda()
             mask = mask.type(torch.FloatTensor)
             mask = Variable(mask).cuda()
-            # affinity_mask = affinity_mask.type(torch.FloatTensor)
-            # affinity_mask = Variable(affinity_mask).cuda()
 
             out, _ = net(images)
 
@@ -184,36 +154,3 @@ if __name__ == '__main__':
             loss.backward()
             optimizer.step()
             loss_value += loss.item()
-            if index % 2 == 0 and index > 0:
-                et = time.time()
-                print('epoch {}:({}/{}) batch || training time for 2 batch {} || training loss {} ||'.format(epoch, index, len(real_data_loader), et-st, loss_value/2))
-                loss_time = 0
-                loss_value = 0
-                st = time.time()
-            # if loss < compare_loss:
-            #     print('save the lower loss iter, loss:',loss)
-            #     compare_loss = loss
-            #     torch.save(net.module.state_dict(),
-            #                '/data/CRAFT-pytorch/real_weights/lower_loss.pth')
-
-            #net.eval()
-            if index % 350 ==0 and index != 0:
-                print('Saving state, iter:', index)
-                torch.save(net.module.state_dict(),
-                           '/data/CRAFT-pytorch/weights/mlt'+'_'+repr(epoch)+'_' + repr(index) + '.pth')
-                test('/data/CRAFT-pytorch/weights/mlt'+'_'+repr(epoch)+'_' + repr(index) + '.pth')
-                #test('/data/CRAFT-pytorch/craft_mlt_25k.pth')
-                getresult()
-        print('Saving state, iter:', epoch)
-        torch.save(net.module.state_dict(),
-                   '/data/CRAFT-pytorch/epoch_weights/mlt' + '_' + repr(epoch) + '.pth')
-        test('/data/CRAFT-pytorch/epoch_weights/mlt' + '_' + repr(epoch) + '.pth')
-        # test('/data/CRAFT-pytorch/craft_mlt_25k.pth')
-        getresult()
-            
-
-
-
-
-
-

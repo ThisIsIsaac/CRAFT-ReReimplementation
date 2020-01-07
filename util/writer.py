@@ -10,14 +10,14 @@ class MyWriter(SummaryWriter):
     def log_training(self, loss, step):
         self.add_scalar('train.loss', loss, step)
 
-    def log_validation(self, loss, net, step, my_outputs=None, ref_outputs=None, save_image=False):
+    def log_validation(self, loss, net, step, my_outputs=None, ref_outputs=None, save_images=False):
         logging.info("step = " + str(step) + ", loss = " + str(loss))
 
         self.add_scalar('validation.loss', loss, step)
         self.log_histogram(net, step)
 
-        if save_image:
-            self.log_output_images(my_outputs, ref_outputs)
+        if save_images:
+            self.log_output_images(my_outputs, ref_outputs, step)
 
     def log_output_images(self, my_outputs, ref_outputs, step):
         """Inputs must be the returned list of images from `craft_util.save_outputs_from_tensors`.

@@ -31,11 +31,13 @@ def validate(args, net, val_loader, writer, step, images_path):
             loss = criterion(gh_label, gah_label, out1, out2, mask)
             loss_sum += loss.item()
 
+            # if log explodes, save images and log approriate data
             if loss > 1e8 or math.isnan(loss):
                 imgs_paths_str = ""
                 for img_path  in img_paths:
                     imgs_paths_str += img_path + "\n"
 
+                # log error message
                 logging.error("loss %.01f during validation, at step %d!" % (loss, step))
                 logging.error("above error occured while processing images:\n" + imgs_paths_str)
 
@@ -52,6 +54,7 @@ def validate(args, net, val_loader, writer, step, images_path):
                 if not os.path.exists(ref_images_path):
                     os.mkdir(ref_images_path)
 
+                # save images to disk
                 output_images = craft_utils.save_outputs_from_tensors(unnormalized_images, out1, out2,
                                                                       args.text_threshold, args.link_threshold,
                                                                       args.low_text,
@@ -61,8 +64,10 @@ def validate(args, net, val_loader, writer, step, images_path):
                                                                    args.low_text,
                                                                    ref_images_path, img_paths)
 
-                writer.log_validation(loss, net, step, my_outputs=output_images, ref_output=ref_images, save_images=True)
+                # log loss and images
+                writer.log_validation(loss, net, step, my_outputs=output_images, ref_outputs=ref_images, save_images=True)
 
+            # save the first batch of images
             if is_first_iteration:
                 # create path and directories to save imags
                 valid_images_path = os.path.join(images_path, "valid")
@@ -86,11 +91,11 @@ def validate(args, net, val_loader, writer, step, images_path):
                                                                    args.low_text,
                                                                    ref_images_path, img_paths)
 
-                writer.log_validation(loss, net, step, my_outputs=output_images, ref_output=ref_images,
+                writer.log_validation(loss, net, step, my_outputs=output_images, ref_outputs=ref_images,
                                       save_images=True)
                 is_first_iteration = False
 
 
     net.train()
     avg_loss = loss_sum / num_val_images
-    writer.log_validation(avg_loss, net, step, save_image=False)
+    writer.log_validation(avg_loss, net, step, save_images=False)

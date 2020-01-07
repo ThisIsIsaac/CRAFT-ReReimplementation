@@ -5,7 +5,7 @@ import torch.backends.cudnn as cudnn
 import torch.optim as optim
 import random
 from test import test
-from util.data_loader import ICDAR2015, Synth80k
+from data_loader.data_loader import ICDAR2015, Synth80k
 
 from util.mseloss import Maploss
 from collections import OrderedDict

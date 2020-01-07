@@ -1,10 +1,5 @@
 from util.file_utils import *
-from util.data_loader import craft_base_dataset, random_scale
-import numpy as np
-import cv2
-import xml.etree.ElementTree as ET
-import logging
-import math
+from data_loader.data_loader import craft_base_dataset
 import csv
 
 class NumberPlate(craft_base_dataset):
